@@ -100,7 +100,13 @@ def home():
 @app.route('/api/malaria/view_malaria')
 def view_malaria():
     #TODO: add pagination
-    malaria_list = Malaria.query.all()
+    page = request.args.get('page', 1, type=int) # Default page is 1
+
+    # Returns empty list if page requested is beyond last
+    paginated_malaria_query = Malaria.query.paginate(page=page, per_page=10, error_out=False)
+    malaria_items = paginated_malaria_query.items
+
+    #malaria_list = Malaria.query.all()
 
     malaria_data = [{
         'region': malaria.region,
@@ -108,9 +114,11 @@ def view_malaria():
         'cases_median': malaria.cases_median,
         'deaths_median': malaria.deaths_median,
         'who_region': malaria.who_region
-    } for malaria in malaria_list]
+    } for malaria in malaria_items]
 
-    return jsonify({'malaria_data': malaria_data})
+    return jsonify({'malaria_data': malaria_data,
+                    'total_pages': paginated_malaria_query.pages,
+                    'current_page': page})
 
 @app.route('/api/admin/add_admin', methods=['POST'])
 def add_admin():
