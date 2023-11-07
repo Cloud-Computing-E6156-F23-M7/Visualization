@@ -93,9 +93,12 @@ def import_csv():
 def home():
     return "ok"
 
+#TODO: 
+# add filter (single filter and range filter) in '/api/malaria/filter_malaria'
+# add pagination to filter_malaria
+
 @app.route('/api/malaria/view_malaria')
 def view_malaria():
-    #TODO: add filter
     #TODO: add pagination
     malaria_list = Malaria.query.all()
 
@@ -121,7 +124,7 @@ def add_admin():
         return "Successfully added an admin", 201
     else:
         if admin.isDeleted == True:
-            admin.isDelete = False
+            admin.isDeleted = False
             db.session.commit()
             return "Successfully reactivated a deleted admin", 201
         else:
