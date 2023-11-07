@@ -3,7 +3,7 @@ from flask import Blueprint, Flask, request, jsonify
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import func
-#from sqlalchemy.types import *
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 import pandas as pd
 
 class DbConfig(object):
@@ -22,6 +22,7 @@ CORS(app)
 class Admin(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(100), unique=True, nullable=False)
+    isDeleted = db.Column(db.Integer, default=False, nullable=False) # perform soft deletion only
     actions = db.relationship('Action', back_populates='admin') 
 
 class Feedback(db.Model):
@@ -110,13 +111,21 @@ def view_malaria():
 
 @app.route('/api/admin/add_admin', methods=['POST'])
 def add_admin():
-    admin_data = request.get_json()
-    new_admin = Admin(email=admin_data['email'])
-
-    db.session.add(new_admin)
-    db.session.commit()
-
-    return "Successfully added an admin", 201
+    email = request.json.get('email')
+    admin = Admin.query.filter_by(email=email).first()
+    
+    if not admin:
+        new_admin = Admin(email=email)
+        db.session.add(new_admin)
+        db.session.commit()
+        return "Successfully added an admin", 201
+    else:
+        if admin.isDeleted == True:
+            admin.isDelete = False
+            db.session.commit()
+            return "Successfully reactivated a deleted admin", 201
+        else:
+            return "admin already exists and is activated", 400
 
 @app.route('/api/admin/view_admin')
 def view_admin():
@@ -124,10 +133,27 @@ def view_admin():
 
     admins = [{
         'admin_id': admin.id,
-        'email': admin.email
+        'email': admin.email,
+        'isDeleted': admin.isDeleted
     } for admin in admin_list]
 
     return jsonify({'admins': admins})
+
+@app.route('/api/admin/deactivate_admin', methods=['POST'])
+def deactivate_admin():
+    email = request.json.get('email')
+    admin = Admin.query.filter_by(email=email).first()
+
+    if admin:
+        admin.isDeleted = True
+        try:
+            db.session.commit()
+            return "Successfully deactivated an admin", 201
+        except (IntegrityError, SQLAlchemyError):
+            db.session.rollback()
+            return "Error deactivating admin", 501
+    else:
+        return "Admin not found", 404
 
 @app.route('/api/admin/handle_feedback', methods=['POST'])
 def handle_feedback():
