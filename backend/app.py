@@ -93,20 +93,36 @@ def import_csv():
 def home():
     return "ok"
 
-#TODO: 
-# add filter (single filter and range filter) in '/api/malaria/filter_malaria'
-# add pagination to filter_malaria
+@app.route('/api/malaria/filter_malaria', methods=['POST'])
+def filter_malaria():
+    page = request.json.get('page', 1) # default is 1 if none is provided
+
+    pagination = Malaria.query.paginate(page=page, per_page=10, error_out=False)
+    malaria_data = [{
+        'region': malaria.region,
+        'year': malaria.year,
+        'cases_median': malaria.cases_median,
+        'deaths_median': malaria.deaths_median,
+        'who_region': malaria.who_region
+    } for malaria in pagination.items]
+
+    next_url = f'/api/malaria/filter_malaria?page={pagination.next_num}' if pagination.has_next else None
+    prev_url = f'/api/malaria/filter_malaria?page={pagination.prev_num}' if pagination.has_prev else None
+    current_url = f'/api/malaria/filter_malaria?page={page}'
+
+    return jsonify({
+        'malaria_data': malaria_data,
+        'prev_url': prev_url,
+        'next_url': next_url,
+        'current_url': current_url,
+        'total_pages': pagination.pages,
+        'total_items': pagination.total
+    })
 
 @app.route('/api/malaria/view_malaria')
 def view_malaria():
     #TODO: add pagination
-    page = request.args.get('page', 1, type=int) # Default page is 1
-
-    # Returns empty list if page requested is beyond last
-    paginated_malaria_query = Malaria.query.paginate(page=page, per_page=10, error_out=False)
-    malaria_items = paginated_malaria_query.items
-
-    #malaria_list = Malaria.query.all()
+    malaria_list = Malaria.query.all()
 
     malaria_data = [{
         'region': malaria.region,
@@ -114,11 +130,9 @@ def view_malaria():
         'cases_median': malaria.cases_median,
         'deaths_median': malaria.deaths_median,
         'who_region': malaria.who_region
-    } for malaria in malaria_items]
+    } for malaria in malaria_list]
 
-    return jsonify({'malaria_data': malaria_data,
-                    'total_pages': paginated_malaria_query.pages,
-                    'current_page': page})
+    return jsonify({'malaria_data': malaria_data})
 
 @app.route('/api/admin/add_admin', methods=['POST'])
 def add_admin():
