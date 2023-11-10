@@ -95,18 +95,21 @@ def home():
 
 @app.route('/api/malaria/filter_malaria', methods=['POST'])
 def filter_malaria():
-    filter_option = request.json.get('filter', None) # default is no filter
+    filter_option = request.args.get('filter', None)  # takes filter from query parameters
+    page = request.args.get('page', 1, type=int)  # takes page number from query parameters
 
     query = Malaria.query
 
-    if isinstance(filter_option, int):
-        query = query.filter(Malaria.year == filter_option)
-    elif isinstance(filter_option, str):
-        query = query.filter(Malaria.region.ilike(f'%{filter_option}%'))
-    elif filter_option is not None:
-        return "Filter is invalid", 400
-    
-    pagination = query.paginate(page=1, per_page=10, error_out=False)
+    # applies filters to the query before pagination
+    if filter_option is not None:
+        if filter_option.isdigit():
+            filter_option = int(filter_option)
+            query = query.filter(Malaria.year == filter_option)
+        else:
+            query = query.filter(Malaria.region.ilike(f'%{filter_option}%'))
+
+    # paginates the filtered query
+    pagination = query.paginate(page=page, per_page=10, error_out=False)
     malaria_data = [{
         'region': malaria.region,
         'year': malaria.year,
@@ -115,12 +118,16 @@ def filter_malaria():
         'who_region': malaria.who_region
     } for malaria in pagination.items]
 
-    next_num = pagination.next_num if pagination.has_next else 1
-    prev_num = pagination.prev_num if pagination.has_prev else 1
-    next_url = f'/api/malaria/filter_malaria?filter={filter_option}&page={next_num}' if \
-        filter_option else None
-    prev_url = f'/api/malaria/filter_malaria?filter={filter_option}&page={prev_num}' if \
-        filter_option and pagination.has_prev else None
+    next_num = pagination.next_num if pagination.has_next else None
+    prev_num = pagination.prev_num if pagination.has_prev else None
+
+    next_url = f'/api/malaria/filter_malaria?page={next_num}'
+    prev_url = f'/api/malaria/filter_malaria?page={prev_num}'
+
+    # appends filter option to URLs if exists
+    if filter_option:
+        next_url += f'&filter={filter_option}' if next_url else None
+        prev_url += f'&filter={filter_option}' if prev_url else None
 
     return jsonify({
         'malaria_data': malaria_data,
@@ -129,6 +136,7 @@ def filter_malaria():
         'total_pages': pagination.pages,
         'total_items': pagination.total
     })
+
 
 @app.route('/api/malaria/view_malaria')
 def view_malaria():
