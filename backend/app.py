@@ -93,20 +93,28 @@ def import_csv():
 def home():
     return "ok"
 
-@app.route('/api/malaria/filter_malaria', methods=['POST'])
+@app.route('/api/malaria/filter_malaria')
 def filter_malaria():
-    filter_option = request.args.get('filter', None)  # takes filter from query parameters
+    region = request.args.get('region')  # takes region from query parameters
+    year = request.args.get('year', type=int)  # takes year from query parameters
+    who_region = request.args.get('who_region')
     page = request.args.get('page', 1, type=int)  # takes page number from query parameters
 
     query = Malaria.query
+    url = url = f'/api/malaria/filter_malaria?'
 
-    # applies filters to the query before pagination
-    if filter_option is not None:
-        if filter_option.isdigit():
-            filter_option = int(filter_option)
-            query = query.filter(Malaria.year == filter_option)
-        else:
-            query = query.filter(Malaria.region.ilike(f'%{filter_option}%'))
+    if region is not None:
+        query = query.filter(Malaria.region.ilike(f'%{region}%'))
+        url += '&' if url[-1] != '?' else ''
+        url += f'region={region}'
+    if year is not None:
+        query = query.filter(Malaria.year == year)
+        url += '&' if url[-1] != '?' else ''
+        url += f'year={year}'
+    if who_region is not None:
+        query = query.filter(Malaria.who_region.ilike(f'%{who_region}%'))
+        url += '&' if url[-1] != '?' else ''
+        url += f'who_region={who_region}'
 
     # paginates the filtered query
     pagination = query.paginate(page=page, per_page=10, error_out=False)
@@ -118,16 +126,9 @@ def filter_malaria():
         'who_region': malaria.who_region
     } for malaria in pagination.items]
 
-    next_num = pagination.next_num if pagination.has_next else None
-    prev_num = pagination.prev_num if pagination.has_prev else None
-
-    next_url = f'/api/malaria/filter_malaria?page={next_num}'
-    prev_url = f'/api/malaria/filter_malaria?page={prev_num}'
-
-    # appends filter option to URLs if exists
-    if filter_option:
-        next_url += f'&filter={filter_option}' if next_url else None
-        prev_url += f'&filter={filter_option}' if prev_url else None
+    url += '&' if url[-1] != '?' else ''
+    next_url = url + f'page={pagination.next_num}'
+    prev_url = url + f'page={pagination.prev_num}'
 
     return jsonify({
         'malaria_data': malaria_data,
@@ -137,10 +138,8 @@ def filter_malaria():
         'total_items': pagination.total
     })
 
-
-@app.route('/api/malaria/view_malaria')
-def view_malaria():
-    #TODO: add pagination
+@app.route('/api/malaria/get_malaria')
+def get_all_malaria():
     malaria_list = Malaria.query.all()
 
     malaria_data = [{
@@ -153,7 +152,33 @@ def view_malaria():
 
     return jsonify({'malaria_data': malaria_data})
 
-@app.route('/api/admin/add_admin', methods=['POST'])
+@app.route('/api/admin/', methods=['GET'])
+def get_all_admin():
+    admin_list = Admin.query.all()
+
+    admins = [{
+        'admin_id': admin.id,
+        'email': admin.email,
+        'isDeleted': admin.isDeleted
+    } for admin in admin_list]
+
+    return jsonify({'admins': admins})
+
+@app.route('/api/admin/<int:admin_id>', methods=['GET'])
+def get_admin(admin_id):
+    admin = Admin.query.filter_by(id=admin_id).first()
+
+    if admin:
+        admin_dic = {
+            'admin_id': admin.id,
+            'email': admin.email,
+            'isDeleted': admin.isDeleted
+        }
+        return jsonify({'admin': admin_dic})
+    else:
+        return "Admin not found", 404
+
+@app.route('/api/admin', methods=['POST'])
 def add_admin():
     email = request.json.get('email')
     admin = Admin.query.filter_by(email=email).first()
@@ -171,22 +196,9 @@ def add_admin():
         else:
             return "admin already exists and is activated", 400
 
-@app.route('/api/admin/view_admin')
-def view_admin():
-    admin_list = Admin.query.all()
-
-    admins = [{
-        'admin_id': admin.id,
-        'email': admin.email,
-        'isDeleted': admin.isDeleted
-    } for admin in admin_list]
-
-    return jsonify({'admins': admins})
-
-@app.route('/api/admin/deactivate_admin', methods=['POST'])
-def deactivate_admin():
-    email = request.json.get('email')
-    admin = Admin.query.filter_by(email=email).first()
+@app.route('/api/admin/<int:admin_id>', methods=['DELETE'])
+def delete_admin(admin_id):
+    admin = Admin.query.filter_by(id=admin_id).first()
 
     if admin:
         admin.isDeleted = True
@@ -199,13 +211,31 @@ def deactivate_admin():
     else:
         return "Admin not found", 404
 
+@app.route('/api/admin/<int:admin_id>', methods=['PUT'])
+def update_admin(admin_id):
+    admin = Admin.query.filter_by(id=admin_id).first()
+
+    if admin:
+        if (admin.isDeleted == True):
+            return "Admin is deactivated. Add admin before the update", 400
+        else:
+            admin.email = request.json.get('email', admin.email)
+        try:
+            db.session.commit()
+            return "Successfully updated an admin", 201
+        except (IntegrityError, SQLAlchemyError):
+            db.session.rollback()
+            return "Error updating admin", 501
+    else:
+        return "Admin not found", 404
+
 @app.route('/api/admin/handle_feedback', methods=['POST'])
 def handle_feedback():
     action_data = request.get_json()
     new_action = Action(
-        admin_id=action_data['admin_id'], 
-        feedback_id=action_data['feedback_id'],
-        comment=action_data['comment']
+        admin_id=action_data.get('admin_id'), 
+        feedback_id=action_data.get('feedback_id'),
+        comment=action_data.get('comment')
         )
 
     db.session.add(new_action)
@@ -217,9 +247,9 @@ def handle_feedback():
 def submit_feedback():
     feedback_data = request.get_json()
     new_feedback = Feedback(
-        name=feedback_data['name'], 
-        email=feedback_data['email'],
-        text=feedback_data['text']
+        name=feedback_data.get('name'), 
+        email=feedback_data.get('email'),
+        text=feedback_data.get('text')
         )
 
     db.session.add(new_feedback)
@@ -227,8 +257,8 @@ def submit_feedback():
 
     return "Successfully submitted feedback", 201
 
-@app.route('/api/admin/view_feedback')
-def view_feedback():
+@app.route('/api/admin/get_feedback')
+def get_all_feedback():
     feedback_list = db.session.query(Feedback, Action, Admin) \
         .select_from(Feedback) \
         .join(Action, isouter=True) \
@@ -247,6 +277,28 @@ def view_feedback():
     } for feedback, action, admin in feedback_list]
     
     return jsonify({'feedback': feedback_entries})
+
+@app.route('/api/admin/get_action')
+def get_action():
+    action_list = db.session.query(Action, Feedback, Admin) \
+        .select_from(Action) \
+        .join(Feedback, isouter=True) \
+        .join(Admin, isouter=True) \
+        .all()
+
+    actions = [{
+        'action_id': action.id,
+        'admin': admin.email if admin is not None else None,
+        'action_date': action.action_date,
+        'action_comment': action.comment,
+        'feedback_id': feedback.id if feedback is not None else None,
+        'feedback_submission_date': feedback.submission_date if feedback is not None else None,
+        'feedback_name': feedback.name if feedback is not None else None,
+        'feedback_email': feedback.email if feedback is not None else None,
+        'feedback_text': feedback.text if feedback is not None else None
+    } for action, feedback, admin in action_list]
+    
+    return jsonify({'actions': actions})
 
 if __name__ == '__main__':
     with app.app_context():
