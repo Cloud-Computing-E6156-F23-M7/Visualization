@@ -2,7 +2,7 @@
 
 ## Install Necessary Packages
 
-In QbQuery folder
+In DbQuery folder
 ```
 source venv/bin/activate
 
