@@ -200,7 +200,7 @@ def add_admin():
         if admin.isDeleted == True:
             admin.isDeleted = False
             db.session.commit()
-            return "Successfully reactivated a deleted admin", 204
+            return "Successfully reactivated a deleted admin"
         else:
             return "admin already exists and is activated", 400
 
@@ -212,7 +212,7 @@ def delete_admin(admin_id):
         admin.isDeleted = True
         try:
             db.session.commit()
-            return "Successfully deactivated an admin", 202
+            return "Successfully deactivated an admin"
         except (IntegrityError, SQLAlchemyError):
             db.session.rollback()
             return "Error deactivating an admin", 501
@@ -229,7 +229,7 @@ def update_admin(admin_id):
             if admin.isDeleted == True:
                 admin.isDeleted = False
                 db.session.commit()
-                return "Successfully reactivated a deleted admin", 204
+                return "Successfully reactivated a deleted admin"
             else:
                 return "Email cannot be null", 400
         if Admin.query.filter_by(email=new_email).first():
@@ -238,10 +238,10 @@ def update_admin(admin_id):
         if admin.isDeleted == True:
             admin.isDeleted = False
             db.session.commit()
-            return "Successfully activated an admin and updated the email", 204
+            return "Successfully activated an admin and updated the email"
         else:
             db.session.commit()
-            return "Successfully updated an admin email", 204
+            return "Successfully updated an admin email"
     else:
         return "Admin not found", 404
 
