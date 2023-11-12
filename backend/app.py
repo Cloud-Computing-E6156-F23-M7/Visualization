@@ -169,15 +169,18 @@ def get_all_admin():
 def get_admin(admin_id):
     admin = Admin.query.filter_by(id=admin_id).first()
 
-    if admin:
-        admin_dic = {
-            'admin_id': admin.id,
-            'email': admin.email,
-            'isDeleted': admin.isDeleted
-        }
-        return jsonify({'admin': admin_dic})
-    else:
+    if not admin:
         return "Admin not found", 404
+    if admin.isDeleted == True:
+        return "Admin not activated", 400
+
+    admin_dic = {
+        'admin_id': admin.id,
+        'email': admin.email,
+        'isDeleted': admin.isDeleted
+    }
+    
+    return jsonify({'admin': admin_dic})
 
 @app.route('/api/admin/', methods=['POST'])
 def add_admin():
