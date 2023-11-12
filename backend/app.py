@@ -99,6 +99,7 @@ def filter_malaria():
     year = request.args.get('year', type=int)  # takes year from query parameters
     who_region = request.args.get('who_region')
     page = request.args.get('page', 1, type=int)  # takes page number from query parameters
+    per_page = request.args.get('per_page', 10, type=int)
 
     query = Malaria.query
     url = url = f'/api/malaria/filter?'
@@ -117,7 +118,7 @@ def filter_malaria():
         url += f'who_region={who_region}'
 
     # paginates the filtered query
-    pagination = query.paginate(page=page, per_page=10, error_out=False)
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     malaria_data = [{
         'region': malaria.region,
         'year': malaria.year,
@@ -127,8 +128,8 @@ def filter_malaria():
     } for malaria in pagination.items]
 
     url += '&' if url[-1] != '?' else ''
-    next_url = url + f'page={pagination.next_num}'
-    prev_url = url + f'page={pagination.prev_num}'
+    next_url = url + f'page={pagination.next_num}&per_page={pagination.per_page}'
+    prev_url = url + f'page={pagination.prev_num}&per_page={pagination.per_page}'
 
     return jsonify({
         'malaria_data': malaria_data,
@@ -191,12 +192,12 @@ def add_admin():
         new_admin = Admin(email=email)
         db.session.add(new_admin)
         db.session.commit()
-        return "Successfully added an admin"
+        return "Successfully added an admin", 201
     else:
         if admin.isDeleted == True:
             admin.isDeleted = False
             db.session.commit()
-            return "Successfully reactivated a deleted admin"
+            return "Successfully reactivated a deleted admin", 204
         else:
             return "admin already exists and is activated", 400
 
@@ -208,7 +209,7 @@ def delete_admin(admin_id):
         admin.isDeleted = True
         try:
             db.session.commit()
-            return "Successfully deactivated an admin"
+            return "Successfully deactivated an admin", 202
         except (IntegrityError, SQLAlchemyError):
             db.session.rollback()
             return "Error deactivating an admin", 501
@@ -225,7 +226,7 @@ def update_admin(admin_id):
             if admin.isDeleted == True:
                 admin.isDeleted = False
                 db.session.commit()
-                return "Successfully reactivated a deleted admin"
+                return "Successfully reactivated a deleted admin", 204
             else:
                 return "Email cannot be null", 400
         if Admin.query.filter_by(email=new_email).first():
@@ -234,10 +235,10 @@ def update_admin(admin_id):
         if admin.isDeleted == True:
             admin.isDeleted = False
             db.session.commit()
-            return "Successfully activated an admin and updated the email"
+            return "Successfully activated an admin and updated the email", 204
         else:
             db.session.commit()
-            return "Successfully updated an admin email"
+            return "Successfully updated an admin email", 204
     else:
         return "Admin not found", 404
 
@@ -265,7 +266,7 @@ def handle_feedback(admin_id, feedback_id):
     db.session.add(new_action)
     db.session.commit()
 
-    return "Successfully logged a feedback action"
+    return "Successfully logged a feedback action", 201
 
 @app.route('/api/feedback/submit_feedback/', methods=['POST'])
 def submit_feedback():
@@ -285,7 +286,7 @@ def submit_feedback():
     db.session.add(new_feedback)
     db.session.commit()
 
-    return "Successfully submitted feedback"
+    return "Successfully submitted feedback", 201
 
 @app.route('/api/admin/get_feedback/')
 def get_all_feedback():
