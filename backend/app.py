@@ -37,7 +37,7 @@ class Action(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     admin_id = db.Column(db.Integer, db.ForeignKey('admin.id'), nullable=False)
     feedback_id = db.Column(db.Integer, db.ForeignKey('feedback.id'), nullable=False)
-    comment = db.Column(db.Text)
+    comment = db.Column(db.Text, nullable=False)
     action_date = db.Column(db.DateTime(timezone=True), default=func.now())
 
     admin = db.relationship('Admin', back_populates='actions')
@@ -91,9 +91,9 @@ def import_csv():
 # NOTE: This route is needed for the default EB health check route
 @app.route('/')  
 def home():
-    return "ok"
+    return "Ok"
 
-@app.route('/api/malaria/filter_malaria')
+@app.route('/api/malaria/filter')
 def filter_malaria():
     region = request.args.get('region')  # takes region from query parameters
     year = request.args.get('year', type=int)  # takes year from query parameters
@@ -101,7 +101,7 @@ def filter_malaria():
     page = request.args.get('page', 1, type=int)  # takes page number from query parameters
 
     query = Malaria.query
-    url = url = f'/api/malaria/filter_malaria?'
+    url = url = f'/api/malaria/filter?'
 
     if region is not None:
         query = query.filter(Malaria.region.ilike(f'%{region}%'))
@@ -138,7 +138,7 @@ def filter_malaria():
         'total_items': pagination.total
     })
 
-@app.route('/api/malaria/get_malaria')
+@app.route('/api/malaria/')
 def get_all_malaria():
     malaria_list = Malaria.query.all()
 
@@ -164,7 +164,7 @@ def get_all_admin():
 
     return jsonify({'admins': admins})
 
-@app.route('/api/admin/<int:admin_id>', methods=['GET'])
+@app.route('/api/admin/<int:admin_id>/', methods=['GET'])
 def get_admin(admin_id):
     admin = Admin.query.filter_by(id=admin_id).first()
 
@@ -178,25 +178,29 @@ def get_admin(admin_id):
     else:
         return "Admin not found", 404
 
-@app.route('/api/admin', methods=['POST'])
+@app.route('/api/admin/', methods=['POST'])
 def add_admin():
     email = request.json.get('email')
+    
+    if email is None:
+        return "Email cannot be null", 400
+    
     admin = Admin.query.filter_by(email=email).first()
     
     if not admin:
         new_admin = Admin(email=email)
         db.session.add(new_admin)
         db.session.commit()
-        return "Successfully added an admin", 201
+        return "Successfully added an admin"
     else:
         if admin.isDeleted == True:
             admin.isDeleted = False
             db.session.commit()
-            return "Successfully reactivated a deleted admin", 201
+            return "Successfully reactivated a deleted admin"
         else:
             return "admin already exists and is activated", 400
 
-@app.route('/api/admin/<int:admin_id>', methods=['DELETE'])
+@app.route('/api/admin/<int:admin_id>/', methods=['DELETE'])
 def delete_admin(admin_id):
     admin = Admin.query.filter_by(id=admin_id).first()
 
@@ -204,60 +208,86 @@ def delete_admin(admin_id):
         admin.isDeleted = True
         try:
             db.session.commit()
-            return "Successfully deactivated an admin", 201
+            return "Successfully deactivated an admin"
         except (IntegrityError, SQLAlchemyError):
             db.session.rollback()
-            return "Error deactivating admin", 501
+            return "Error deactivating an admin", 501
     else:
         return "Admin not found", 404
 
-@app.route('/api/admin/<int:admin_id>', methods=['PUT'])
+@app.route('/api/admin/<int:admin_id>/', methods=['PUT'])
 def update_admin(admin_id):
     admin = Admin.query.filter_by(id=admin_id).first()
+    new_email = request.json.get('email')
 
     if admin:
-        if (admin.isDeleted == True):
-            return "Admin is deactivated. Add admin before the update", 400
-        else:
-            admin.email = request.json.get('email', admin.email)
-        try:
+        if not new_email:
+            if admin.isDeleted == True:
+                admin.isDeleted = False
+                db.session.commit()
+                return "Successfully reactivated a deleted admin"
+            else:
+                return "Email cannot be null", 400
+        if Admin.query.filter_by(email=new_email).first():
+            return "Email already exists", 400
+        admin.email = new_email
+        if admin.isDeleted == True:
+            admin.isDeleted = False
             db.session.commit()
-            return "Successfully updated an admin", 201
-        except (IntegrityError, SQLAlchemyError):
-            db.session.rollback()
-            return "Error updating admin", 501
+            return "Successfully activated an admin and updated the email"
+        else:
+            db.session.commit()
+            return "Successfully updated an admin email"
     else:
         return "Admin not found", 404
 
-@app.route('/api/admin/handle_feedback', methods=['POST'])
-def handle_feedback():
-    action_data = request.get_json()
+@app.route('/api/admin/<int:admin_id>/handle_feedback/<int:feedback_id>/', methods=['POST'])
+def handle_feedback(admin_id, feedback_id):
+    comment = request.json.get('comment')
+    
+    if not comment:
+        return "Comment cannot be null", 400
+
+    admin = Admin.query.filter_by(id=admin_id).first()
+
+    if not (admin and Feedback.query.filter_by(id=feedback_id).first()):
+        return "admin_id or feedback_id not found", 404
+
+    if admin.isDeleted == True:
+        return "admin is deactivated", 400
+
     new_action = Action(
-        admin_id=action_data.get('admin_id'), 
-        feedback_id=action_data.get('feedback_id'),
-        comment=action_data.get('comment')
+        admin_id=admin_id,
+        feedback_id=feedback_id,
+        comment=comment
         )
 
     db.session.add(new_action)
     db.session.commit()
 
-    return "Successfully logged a feedback action", 201
+    return "Successfully logged a feedback action"
 
-@app.route('/api/feedback/submit_feedback', methods=['POST'])
+@app.route('/api/feedback/submit_feedback/', methods=['POST'])
 def submit_feedback():
     feedback_data = request.get_json()
+
+    feedback_text = feedback_data.get('text')
+
+    if feedback_text is None:
+        return "Text cannot be null", 400
+
     new_feedback = Feedback(
         name=feedback_data.get('name'), 
         email=feedback_data.get('email'),
-        text=feedback_data.get('text')
+        text=feedback_text
         )
 
     db.session.add(new_feedback)
     db.session.commit()
 
-    return "Successfully submitted feedback", 201
+    return "Successfully submitted feedback"
 
-@app.route('/api/admin/get_feedback')
+@app.route('/api/admin/get_feedback/')
 def get_all_feedback():
     feedback_list = db.session.query(Feedback, Action, Admin) \
         .select_from(Feedback) \
@@ -271,14 +301,14 @@ def get_all_feedback():
         'name': feedback.name,
         'email': feedback.email,
         'text': feedback.text,
-        'admin': admin.email if admin is not None else None,
+        'actioned_by': admin.email if admin is not None else None,
         'action_date': action.action_date if action is not None else None,
         'action_comment': action.comment if action is not None else None
     } for feedback, action, admin in feedback_list]
     
     return jsonify({'feedback': feedback_entries})
 
-@app.route('/api/admin/get_action')
+@app.route('/api/admin/get_action/')
 def get_action():
     action_list = db.session.query(Action, Feedback, Admin) \
         .select_from(Action) \
