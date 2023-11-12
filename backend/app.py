@@ -104,15 +104,15 @@ def filter_malaria():
     query = Malaria.query
     url = url = f'/api/malaria/filter?'
 
-    if region is not None:
+    if region:
         query = query.filter(Malaria.region.ilike(f'%{region}%'))
         url += '&' if url[-1] != '?' else ''
         url += f'region={region}'
-    if year is not None:
+    if year:
         query = query.filter(Malaria.year == year)
         url += '&' if url[-1] != '?' else ''
         url += f'year={year}'
-    if who_region is not None:
+    if who_region:
         query = query.filter(Malaria.who_region.ilike(f'%{who_region}%'))
         url += '&' if url[-1] != '?' else ''
         url += f'who_region={who_region}'
@@ -305,9 +305,9 @@ def get_all_feedback():
         'name': feedback.name,
         'email': feedback.email,
         'text': feedback.text,
-        'actioned_by': admin.email if admin is not None else None,
-        'action_date': action.action_date if action is not None else None,
-        'action_comment': action.comment if action is not None else None
+        'actioned_by': admin.email if admin else None,
+        'action_date': action.action_date if action else None,
+        'action_comment': action.comment if action else None
     } for feedback, action, admin in feedback_list]
     
     return jsonify({'feedback': feedback_entries})
@@ -322,14 +322,14 @@ def get_action():
 
     actions = [{
         'action_id': action.id,
-        'admin': admin.email if admin is not None else None,
+        'admin': admin.email if admin else None,
         'action_date': action.action_date,
         'action_comment': action.comment,
-        'feedback_id': feedback.id if feedback is not None else None,
-        'feedback_submission_date': feedback.submission_date if feedback is not None else None,
-        'feedback_name': feedback.name if feedback is not None else None,
-        'feedback_email': feedback.email if feedback is not None else None,
-        'feedback_text': feedback.text if feedback is not None else None
+        'feedback_id': feedback.id if feedback else None,
+        'feedback_submission_date': feedback.submission_date if feedback else None,
+        'feedback_name': feedback.name if feedback else None,
+        'feedback_email': feedback.email if feedback else None,
+        'feedback_text': feedback.text if feedback else None
     } for action, feedback, admin in action_list]
     
     return jsonify({'actions': actions})
