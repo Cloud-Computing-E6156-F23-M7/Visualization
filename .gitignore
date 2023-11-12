@@ -23,6 +23,11 @@
 *.json
 *.ts
 
+# Flask #
+######################
+instance/
+.webassets-cache
+
 # Logs and databases #
 ######################
 *.log
