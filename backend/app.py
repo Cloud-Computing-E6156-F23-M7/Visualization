@@ -106,7 +106,7 @@ def import_malaria_csv():
         'deaths_min': db.Integer,
         'deaths_max': db.Integer,
         'fips': db.String(2),
-        'iso': db.String(3),
+        'iso': db.String(3),    # Assume uppercase
         'iso2': db.String(2),
         'land_area_kmsq_2012': db.Integer,
         'languages_en_2012': db.String(100),
@@ -123,24 +123,25 @@ def import_malaria_csv():
         )
 
 def import_country_data():
+    if Country.query.first():
+        return  # Do nothing
+    
     api_url = 'https://restcountries.com/v3.1/alpha?codes='
     fields = '&fields=name,cca2,cca3,currencies,capital,capitalInfo,latlng,area,population,timezones,flags'
-    codes = 'afg' #TODO: get all country codes from malaria db
+    iso_codes = Malaria.query.with_entities(Malaria.iso).distinct().all()
+    iso_codes_str = ','.join([iso[0] for iso in iso_codes])
 
     try:
-        response = requests.get(api_url + codes + fields)
+        response = requests.get(api_url + iso_codes_str + fields)
         
         if response.status_code == 200:
             api_data = response.json()
-            
-            Country.query.delete()
-            db.session.commit()
 
             for country in api_data:
                 new_country = Country(
                     name=country['name'],
                     cca2=country['cca2'],
-                    cca3=country['cca3'],
+                    cca3=country['cca3'],   # Assume uppercase
                     currencies=country['currencies'],
                     capital=country['capital'],
                     capitalInfo=country['capitalInfo'],
@@ -153,7 +154,9 @@ def import_country_data():
                 db.session.add(new_country)
                 db.session.commit()
         else:
-            return jsonify({'error': f'Error fetching country data from API. Status code: {response.status_code}'}), 501 
+            return jsonify({
+                'error': f'Error fetching country data from API. Status code: {response.status_code}'
+                }), 501 
 
     except requests.RequestException as e:
         return jsonify({'error': f'Error making API request: {str(e)}'}), 501
@@ -186,26 +189,41 @@ def get_all_country():
 @app.route('/api/malaria/filter')
 def filter_malaria():
     region = request.args.get('region')  # takes region from query parameters
-    year = request.args.get('year', type=int)  # takes year from query parameters
+    year = request.args.get('year')  # takes year from query parameters
     who_region = request.args.get('who_region')
     page = request.args.get('page', 1, type=int)  # takes page number from query parameters
     per_page = request.args.get('per_page', 10, type=int)
+    iso = request.args.get('iso')
 
-    query = Malaria.query
+    #query = Malaria.query
+
+    query = db.session.query(Malaria, Country) \
+        .select_from(Malaria) \
+        .join(Country, isouter=True)
     url = url = f'/api/malaria/filter?'
 
     if region:
-        query = query.filter(Malaria.region.ilike(f'%{region}%'))
+        #query = query.filter(Malaria.region.ilike(f'%{region}%'))
+        region_list = region.lower().split(',')
+        query = query.filter(func.lower(Malaria.region).in_(region_list))
         url += '&' if url[-1] != '?' else ''
         url += f'region={region}'
     if year:
-        query = query.filter(Malaria.year == year)
+        #query = query.filter(Malaria.year == year)
+        year_list = year.split(',')
+        query = query.filter(Malaria.year.in_(year_list))
         url += '&' if url[-1] != '?' else ''
         url += f'year={year}'
     if who_region:
-        query = query.filter(Malaria.who_region.ilike(f'%{who_region}%'))
+        who_region_list = who_region.lower().split(',')
+        query = query.filter(func.lower(Malaria.who_region).in_(who_region_list))
         url += '&' if url[-1] != '?' else ''
         url += f'who_region={who_region}'
+    if iso:
+        iso_list = iso.upper().split(',')
+        query = query.filter(Malaria.iso.in_(iso_list))
+        url += '&' if url[-1] != '?' else ''
+        url += f'iso={iso}'
 
     # paginates the filtered query
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -217,8 +235,15 @@ def filter_malaria():
         'land_area_kmsq_2012': malaria.land_area_kmsq_2012,
         'languages_en_2012': malaria.languages_en_2012,
         'who_region': malaria.who_region,
-        'world_bank_income_group': malaria.world_bank_income_group
-    } for malaria in pagination.items]
+        'world_bank_income_group': malaria.world_bank_income_group,
+        'name': country.name,
+        'latlng': country.latlng,
+        'currencies': country.currencies,
+        'capital': country.capital,
+        'capitalInfo': country.capitalInfo,
+        'population': country.population,
+        'flags': country.flags
+    } for malaria, country in pagination.items]
 
     url += '&' if url[-1] != '?' else ''
     next_url = url + f'page={pagination.next_num}&per_page={pagination.per_page}'
@@ -238,8 +263,6 @@ def get_all_malaria():
         .select_from(Malaria) \
         .join(Country, isouter=True) \
         .all()
-    
-    # malaria_list = Malaria.query.all()
 
     malaria_data = [{
         'region': malaria.region,
@@ -256,8 +279,8 @@ def get_all_malaria():
         'capital': country.capital,
         'capitalInfo': country.capitalInfo,
         'population': country.population,
-        'flags': country.flags,
-    } for malaria in malaria_list]
+        'flags': country.flags
+    } for malaria, country in malaria_list]
 
     return jsonify(malaria_data)
 
