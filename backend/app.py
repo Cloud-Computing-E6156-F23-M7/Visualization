@@ -4,6 +4,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.sql import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+import requests
 import pandas as pd
 
 class DbConfig(object):
@@ -23,6 +24,7 @@ class Admin(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(100), unique=True, nullable=False)
     isDeleted = db.Column(db.Integer, default=False, nullable=False) # perform soft deletion only
+
     actions = db.relationship('Action', back_populates='admin') 
 
 class Feedback(db.Model):
@@ -31,6 +33,7 @@ class Feedback(db.Model):
     email = db.Column(db.String(100))
     text = db.Column(db.Text, nullable=False)
     submission_date = db.Column(db.DateTime(timezone=True), default=func.now())
+
     actions = db.relationship('Action', back_populates='feedback')
 
 class Action(db.Model):
@@ -56,9 +59,34 @@ class Malaria(db.Model):
     deaths_median = db.Column(db.Integer)
     deaths_min = db.Column(db.Integer)
     deaths_max = db.Column(db.Integer)
+    fips = db.Column(db.String(2))
+    iso = db.Column(db.String(3))
+    iso2 = db.Column(db.String(2))
+    land_area_kmsq_2012 = db.Column(db.Integer)
+    languages_en_2012 = db.Column(db.String(100))
     who_region = db.Column(db.String(100))
+    world_bank_income_group = db.Column(db.String(100))
 
-def import_csv():
+    country = db.relationship('Country', back_populates='malaria')
+
+class Country(db.Model):
+    __bind_key__ = 'malaria_db'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.JSON)
+    cca2 = db.Column(db.String(2))
+    cca3 = db.Column(db.String(3), db.ForeignKey('malaria.iso'))
+    currencies = db.Column(db.JSON)
+    capital = db.Column(db.JSON)
+    capitalInfo = db.Column(db.JSON)
+    latlng = db.Column(db.JSON)
+    area = db.Column(db.Integer)
+    population = db.Column(db.Integer)
+    timezones = db.Column(db.JSON)
+    flags = db.Column(db.JSON)
+
+    malaria = db.relationship('Malaria', back_populates='country')
+
+def import_malaria_csv():
     malaria_csv_path = os.path.join(
         os.getcwd(), 
         'estimated_numbers.csv'
@@ -66,18 +94,24 @@ def import_csv():
     df = pd.read_csv(malaria_csv_path)
     
     df_schema = {
-        "index": db.Integer,
-        "region": db.String(100),
-        "year": db.Integer,
-        "cases": db.String(100),
-        "deaths": db.String(100),
-        "cases_median": db.Integer,
-        "cases_min": db.Integer,
-        "cases_max": db.Integer,
-        "deaths_median": db.Integer,
-        "deaths_min": db.Integer,
-        "deaths_max": db.Integer,
-        "who_region": db.String(100),
+        'index': db.Integer,
+        'region': db.String(100),
+        'year': db.Integer,
+        'cases': db.String(100),
+        'deaths': db.String(100),
+        'cases_median': db.Integer,
+        'cases_min': db.Integer,
+        'cases_max': db.Integer,
+        'deaths_median': db.Integer,
+        'deaths_min': db.Integer,
+        'deaths_max': db.Integer,
+        'fips': db.String(2),
+        'iso': db.String(3),
+        'iso2': db.String(2),
+        'land_area_kmsq_2012': db.Integer,
+        'languages_en_2012': db.String(100),
+        'who_region': db.String(100),
+        'world_bank_income_group': db.String(100)
     }
 
     df.to_sql(
@@ -88,10 +122,66 @@ def import_csv():
         dtype=df_schema
         )
 
+def import_country_data():
+    api_url = 'https://restcountries.com/v3.1/alpha?codes='
+    fields = '&fields=name,cca2,cca3,currencies,capital,capitalInfo,latlng,area,population,timezones,flags'
+    codes = 'afg' #TODO: get all country codes from malaria db
+
+    try:
+        response = requests.get(api_url + codes + fields)
+        
+        if response.status_code == 200:
+            api_data = response.json()
+            
+            Country.query.delete()
+            db.session.commit()
+
+            for country in api_data:
+                new_country = Country(
+                    name=country['name'],
+                    cca2=country['cca2'],
+                    cca3=country['cca3'],
+                    currencies=country['currencies'],
+                    capital=country['capital'],
+                    capitalInfo=country['capitalInfo'],
+                    latlng=country['latlng'],
+                    area=country['area'],
+                    population=country['population'],
+                    timezones=country['timezones'],
+                    flags=country['flags']
+                )
+                db.session.add(new_country)
+                db.session.commit()
+        else:
+            return jsonify({'error': f'Error fetching country data from API. Status code: {response.status_code}'}), 501 
+
+    except requests.RequestException as e:
+        return jsonify({'error': f'Error making API request: {str(e)}'}), 501
+
 # NOTE: This route is needed for the default EB health check route
 @app.route('/')  
 def home():
     return "Ok"
+
+@app.route('/api/country/')
+def get_all_country():
+    country_list = Country.query.all()
+
+    countries = [{
+        'name': country.name,
+        'cca2': country.cca2,
+        'cca3': country.cca3,
+        'currencies': country.currencies,
+        'capital': country.capital,
+        'capitalInfo': country.capitalInfo,
+        'latlng': country.latlng,
+        'area': country.area,
+        'population': country.population,
+        'timezones': country.timezones,
+        'flags': country.flags
+    } for country in country_list]
+
+    return jsonify(countries)
 
 @app.route('/api/malaria/filter')
 def filter_malaria():
@@ -124,7 +214,10 @@ def filter_malaria():
         'year': malaria.year,
         'cases_median': malaria.cases_median,
         'deaths_median': malaria.deaths_median,
-        'who_region': malaria.who_region
+        'land_area_kmsq_2012': malaria.land_area_kmsq_2012,
+        'languages_en_2012': malaria.languages_en_2012,
+        'who_region': malaria.who_region,
+        'world_bank_income_group': malaria.world_bank_income_group
     } for malaria in pagination.items]
 
     url += '&' if url[-1] != '?' else ''
@@ -141,17 +234,32 @@ def filter_malaria():
 
 @app.route('/api/malaria/')
 def get_all_malaria():
-    malaria_list = Malaria.query.all()
+    malaria_list = db.session.query(Malaria, Country) \
+        .select_from(Malaria) \
+        .join(Country, isouter=True) \
+        .all()
+    
+    # malaria_list = Malaria.query.all()
 
     malaria_data = [{
         'region': malaria.region,
         'year': malaria.year,
         'cases_median': malaria.cases_median,
         'deaths_median': malaria.deaths_median,
-        'who_region': malaria.who_region
+        'land_area_kmsq_2012': malaria.land_area_kmsq_2012,
+        'languages_en_2012': malaria.languages_en_2012,
+        'who_region': malaria.who_region,
+        'world_bank_income_group': malaria.world_bank_income_group,
+        'name': country.name,
+        'latlng': country.latlng,
+        'currencies': country.currencies,
+        'capital': country.capital,
+        'capitalInfo': country.capitalInfo,
+        'population': country.population,
+        'flags': country.flags,
     } for malaria in malaria_list]
 
-    return jsonify({'malaria_data': malaria_data})
+    return jsonify(malaria_data)
 
 @app.route('/api/admin/', methods=['GET'])
 def get_all_admin():
@@ -163,7 +271,7 @@ def get_all_admin():
         'isDeleted': admin.isDeleted
     } for admin in admin_list]
 
-    return jsonify({'admins': admins})
+    return jsonify(admins)
 
 @app.route('/api/admin/<int:admin_id>/', methods=['GET'])
 def get_admin(admin_id):
@@ -180,7 +288,7 @@ def get_admin(admin_id):
         'isDeleted': admin.isDeleted
     }
     
-    return jsonify({'admin': admin_dic})
+    return jsonify(admin_dic)
 
 @app.route('/api/admin/', methods=['POST'])
 def add_admin():
@@ -310,10 +418,10 @@ def get_all_feedback():
         'action_comment': action.comment if action else None
     } for feedback, action, admin in feedback_list]
     
-    return jsonify({'feedback': feedback_entries})
+    return jsonify(feedback_entries)
 
 @app.route('/api/admin/get_action/')
-def get_action():
+def get_all_action():
     action_list = db.session.query(Action, Feedback, Admin) \
         .select_from(Action) \
         .join(Feedback, isouter=True) \
@@ -332,11 +440,12 @@ def get_action():
         'feedback_text': feedback.text if feedback else None
     } for action, feedback, admin in action_list]
     
-    return jsonify({'actions': actions})
+    return jsonify(actions)
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        import_csv()
+        import_malaria_csv()
+        import_country_data()
 
     app.run(debug=True, port=8080)
