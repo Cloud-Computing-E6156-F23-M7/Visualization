@@ -67,7 +67,7 @@ class Malaria(db.Model):
     deaths_min = db.Column(db.Integer)
     deaths_max = db.Column(db.Integer)
     fips = db.Column(db.String(2))
-    iso = db.Column(db.String(3))
+    iso = db.Column(db.String(3))   # assume uppercase
     iso2 = db.Column(db.String(2))
     land_area_kmsq_2012 = db.Column(db.Integer)
     languages_en_2012 = db.Column(db.String(100))
@@ -81,7 +81,7 @@ class Country(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.JSON)
     cca2 = db.Column(db.String(2))
-    cca3 = db.Column(db.String(3), db.ForeignKey('malaria.iso'))
+    cca3 = db.Column(db.String(3), db.ForeignKey('malaria.iso'))    # assume uppercase
     currencies = db.Column(db.JSON)
     capital = db.Column(db.JSON)
     capitalInfo = db.Column(db.JSON)
@@ -115,7 +115,7 @@ def import_malaria_csv():
         'deaths_min': db.Integer,
         'deaths_max': db.Integer,
         'fips': db.String(2),
-        'iso': db.String(3),    # Assume uppercase
+        'iso': db.String(3),    # assume uppercase
         'iso2': db.String(2),
         'land_area_kmsq_2012': db.Integer,
         'languages_en_2012': db.String(100),
@@ -133,7 +133,7 @@ def import_malaria_csv():
 
 def import_country_data():
     if Country.query.first():
-        return  # Do nothing
+        return  "Country data already exists in the database"
     
     api_url = 'https://restcountries.com/v3.1/alpha?codes='
     fields = '&fields=name,cca2,cca3,currencies,capital,capitalInfo,latlng,area,population,timezones,flags'
@@ -150,7 +150,7 @@ def import_country_data():
                 new_country = Country(
                     name=country['name'],
                     cca2=country['cca2'],
-                    cca3=country['cca3'],   # Assume uppercase
+                    cca3=country['cca3'],   # assume uppercase
                     currencies=country['currencies'],
                     capital=country['capital'],
                     capitalInfo=country['capitalInfo'],
@@ -166,14 +166,14 @@ def import_country_data():
                 db.session.commit()
             except (IntegrityError, SQLAlchemyError):
                 db.session.rollback()
-                return "Error importing country data to the database", 501
+                return "Error importing country data to the database"
         else:
             return jsonify({
                 'error': f'Error fetching country data from API. Status code: {response.status_code}'
-                }), 501 
+                })
     
     except requests.RequestException as e:
-        return jsonify({'error': f'Error making API request: {str(e)}'}), 501
+        return jsonify({'error': f'Error making API request: {str(e)}'})
 
 # NOTE: This route is needed for the default EB health check route
 @app.route('/')  
@@ -257,13 +257,11 @@ def filter_malaria():
     url = url = f'/api/malaria/filter?'
 
     if region:
-        #query = query.filter(Malaria.region.ilike(f'%{region}%'))
         region_list = region.lower().split(',')
         query = query.filter(func.lower(Malaria.region).in_(region_list))
         url += '&' if url[-1] != '?' else ''
         url += f'region={region}'
     if year:
-        #query = query.filter(Malaria.year == year)
         year_list = year.split(',')
         query = query.filter(Malaria.year.in_(year_list))
         url += '&' if url[-1] != '?' else ''
