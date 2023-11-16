@@ -7,9 +7,12 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 import requests
 import pandas as pd
 
+### Set up the databases ###
+
 class DbConfig(object):
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///site_mgmt.db'
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///sitemgmt.db'
     SQLALCHEMY_BINDS = {
+        'sitemgmt_db': SQLALCHEMY_DATABASE_URI,  # default bind
         'malaria_db': 'sqlite:///malaria.db',
     }
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -21,22 +24,26 @@ db = SQLAlchemy(app)
 CORS(app)
 
 class Admin(db.Model):
+    __bind_key__ = 'sitemgmt_db'
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(100), unique=True, nullable=False)
-    isDeleted = db.Column(db.Integer, default=False, nullable=False) # perform soft deletion only
+    isDeleted = db.Column(db.Integer, default=False, nullable=False) # soft deletion only
 
     actions = db.relationship('Action', back_populates='admin') 
 
 class Feedback(db.Model):
+    __bind_key__ = 'sitemgmt_db'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100))
     email = db.Column(db.String(100))
     text = db.Column(db.Text, nullable=False)
     submission_date = db.Column(db.DateTime(timezone=True), default=func.now())
+    isDeleted = db.Column(db.Integer, default=False, nullable=False) # soft deletion only
 
     actions = db.relationship('Action', back_populates='feedback')
 
 class Action(db.Model):
+    __bind_key__ = 'sitemgmt_db'
     id = db.Column(db.Integer, primary_key=True)
     admin_id = db.Column(db.Integer, db.ForeignKey('admin.id'), nullable=False)
     feedback_id = db.Column(db.Integer, db.ForeignKey('feedback.id'), nullable=False)
@@ -85,6 +92,8 @@ class Country(db.Model):
     flags = db.Column(db.JSON)
 
     malaria = db.relationship('Malaria', back_populates='country')
+
+### Import data to the databases ###
 
 def import_malaria_csv():
     malaria_csv_path = os.path.join(
@@ -152,12 +161,17 @@ def import_country_data():
                     flags=country['flags']
                 )
                 db.session.add(new_country)
+                
+            try:
                 db.session.commit()
+            except (IntegrityError, SQLAlchemyError):
+                db.session.rollback()
+                return "Error importing country data to the database", 501
         else:
             return jsonify({
                 'error': f'Error fetching country data from API. Status code: {response.status_code}'
                 }), 501 
-
+    
     except requests.RequestException as e:
         return jsonify({'error': f'Error making API request: {str(e)}'}), 501
 
@@ -166,9 +180,51 @@ def import_country_data():
 def home():
     return "Ok"
 
-@app.route('/api/country/')
-def get_all_country():
-    country_list = Country.query.all()
+### Reset databases ###
+
+@app.route('/api/reset/sitemgmt/', methods=['PUT'])
+def reset_sitemgmt_db():
+    engine = db.get_engine(app, bind='sitemgmt_db')
+    if engine:
+        metadata = db.MetaData()
+        metadata.reflect(bind=engine)
+        metadata.drop_all(bind=engine)
+        metadata.create_all(bind=engine)
+        return "Successfully reset the sitemgmt database"
+    else:
+        return "Error resetting the sitemgmt database", 501
+
+@app.route('/api/reset/malaria/', methods=['PUT'])
+def reset_malaria_db():
+    engine = db.get_engine(app, bind='malaria_db')
+    if engine:
+        metadata = db.MetaData()
+        metadata.reflect(bind=engine)
+        metadata.drop_all(bind=engine)
+        metadata.create_all(bind=engine)
+        import_malaria_csv()
+        import_country_data()
+        return "Successfully reset the malaria database"
+    else:
+        return "Error resetting the malaria database", 501
+
+@app.route('/api/reset/all/', methods=['PUT'])
+def reset_all_dbs():
+    reset_sitemgmt_db()
+    reset_malaria_db()
+    return "Successfully reset all databases"
+
+### Country and Malaria resources ###
+
+@app.route('/api/country')
+def get_country():
+    iso = request.args.get('iso')
+
+    query = Country.query
+
+    if iso:
+        iso_list = iso.upper().split(',')
+        query = query.filter(Country.cca3.in_(iso_list))
 
     countries = [{
         'name': country.name,
@@ -182,7 +238,7 @@ def get_all_country():
         'population': country.population,
         'timezones': country.timezones,
         'flags': country.flags
-    } for country in country_list]
+    } for country in query]
 
     return jsonify(countries)
 
@@ -194,8 +250,6 @@ def filter_malaria():
     page = request.args.get('page', 1, type=int)  # takes page number from query parameters
     per_page = request.args.get('per_page', 10, type=int)
     iso = request.args.get('iso')
-
-    #query = Malaria.query
 
     query = db.session.query(Malaria, Country) \
         .select_from(Malaria) \
@@ -283,6 +337,16 @@ def get_all_malaria():
     } for malaria, country in malaria_list]
 
     return jsonify(malaria_data)
+
+@app.route('/api/malaria/iso/')
+def get_all_malaria_iso():
+    iso_list = db.session.query(Malaria.iso).distinct().order_by(Malaria.iso).all()
+
+    iso_list = [iso[0] for iso in iso_list]
+
+    return jsonify(iso_list)
+
+### Admin resource ###
 
 @app.route('/api/admin/', methods=['GET'])
 def get_all_admin():
@@ -376,7 +440,134 @@ def update_admin(admin_id):
     else:
         return "Admin not found", 404
 
-@app.route('/api/admin/<int:admin_id>/handle_feedback/<int:feedback_id>/', methods=['POST'])
+### Feedback resource ###
+
+@app.route('/api/feedback/', methods=['POST'])
+def submit_feedback():
+    feedback_data = request.get_json()
+
+    feedback_text = feedback_data.get('text')
+
+    if feedback_text is None:
+        return "Text cannot be null", 400
+
+    new_feedback = Feedback(
+        name=feedback_data.get('name'), 
+        email=feedback_data.get('email'),
+        text=feedback_text
+        )
+
+    db.session.add(new_feedback)
+    db.session.commit()
+
+    return "Successfully submitted feedback", 201
+
+@app.route('/api/feedback/<int:feedback_id>/')
+def get_feedback(feedback_id):
+    feedback = Feedback.query.filter_by(id=feedback_id, isDeleted=False).first()
+
+    if not feedback:
+        return "Feedback not found or deleted", 404
+
+    feedback_dic = {
+        'feedback_id': feedback.id,
+        'submission_date': feedback.submission_date,
+        'name': feedback.name,
+        'email': feedback.email,
+        'text': feedback.text
+    }
+
+    return jsonify(feedback_dic)
+
+@app.route('/api/feedback/<int:feedback_id>/', methods=['PUT'])
+def update_feedback(feedback_id):
+    feedback = Feedback.query.filter_by(id=feedback_id, isDeleted=False).first()
+
+    if not feedback:
+        return "Feedback not found or deleted", 404
+
+    new_feedback_data = request.get_json()
+
+    if not new_feedback_data:
+        return "No data provided", 400
+
+    feedback.name = new_feedback_data.get('name') if new_feedback_data.get('name') else feedback.name
+    feedback.email = new_feedback_data.get('email') if new_feedback_data.get('email') else feedback.email
+    new_text = new_feedback_data.get('text') if new_feedback_data.get('text') else feedback.text
+
+    try:
+        db.session.commit()
+        return "Successfully updated feedback"
+    except (IntegrityError, SQLAlchemyError):
+        db.session.rollback()
+        return "Error updating feedback", 501
+
+@app.route('/api/feedback/<int:feedback_id>/', methods=['DELETE'])
+def delete_feedback(feedback_id):
+    feedback = Feedback.query.filter_by(id=feedback_id, isDeleted=False).first()
+
+    if feedback:
+        feedback.isDeleted = True
+        feedback.name = '<Anonymized for deletion>'
+        feedback.email = '<Anonymized for deletion>'
+        try:
+            db.session.commit()
+            return "Successfully deleted feedback"
+        except (IntegrityError, SQLAlchemyError):
+            db.session.rollback()
+            return "Error deleting feedback", 501
+    else:
+        return "Feedback not found or already deleted", 404
+
+### Feedback resource only authorized for admin ###
+
+@app.route('/api/admin/feedback/')
+def get_all_feedback():
+    feedback_list = db.session.query(Feedback, Action, Admin) \
+        .select_from(Feedback) \
+        .join(Action, isouter=True) \
+        .join(Admin, isouter=True) \
+        .all()
+
+    feedback_entries = [{
+        'feedback_id': feedback.id,
+        'submission_date': feedback.submission_date,
+        'name': feedback.name,
+        'email': feedback.email,
+        'text': feedback.text,
+        'isDeleted': feedback.isDeleted,
+        'actioned_by': admin.email if admin else None,
+        'action_date': action.action_date if action else None,
+        'action_comment': action.comment if action else None
+    } for feedback, action, admin in feedback_list]
+    
+    return jsonify(feedback_entries)
+
+### Action resource only authorized for admin ###
+
+@app.route('/api/admin/action/')
+def get_all_action():
+    action_list = db.session.query(Action, Feedback, Admin) \
+        .select_from(Action) \
+        .join(Feedback, isouter=True) \
+        .join(Admin, isouter=True) \
+        .all()
+
+    actions = [{
+        'action_id': action.id,
+        'admin': admin.email if admin else None,
+        'action_date': action.action_date,
+        'action_comment': action.comment,
+        'feedback_id': feedback.id if feedback else None,
+        'feedback_submission_date': feedback.submission_date if feedback else None,
+        'feedback_name': feedback.name if feedback else None,
+        'feedback_email': feedback.email if feedback else None,
+        'feedback_text': feedback.text if feedback else None
+    } for action, feedback, admin in action_list]
+    
+    return jsonify(actions)
+
+@app.route('/api/admin/<int:admin_id>/feedback/<int:feedback_id>/', methods=['POST'])
 def handle_feedback(admin_id, feedback_id):
     comment = request.json.get('comment')
     
@@ -402,68 +593,41 @@ def handle_feedback(admin_id, feedback_id):
 
     return "Successfully logged a feedback action", 201
 
-@app.route('/api/feedback/submit_feedback/', methods=['POST'])
-def submit_feedback():
-    feedback_data = request.get_json()
+@app.route('/api/admin/action/<int:action_id>/', methods=['PUT'])
+def update_action(action_id):
+    action = Action.query.filter_by(id=action_id).first()
 
-    feedback_text = feedback_data.get('text')
+    if not action:
+        return "Action not found", 404
 
-    if feedback_text is None:
-        return "Text cannot be null", 400
+    new_comment = request.json.get('comment')
 
-    new_feedback = Feedback(
-        name=feedback_data.get('name'), 
-        email=feedback_data.get('email'),
-        text=feedback_text
-        )
+    if not new_comment:
+        return "Comment cannot be null", 400
 
-    db.session.add(new_feedback)
-    db.session.commit()
+    action.comment = new_comment
 
-    return "Successfully submitted feedback", 201
+    try:
+        db.session.commit()
+        return "Successfully updated action"
+    except (IntegrityError, SQLAlchemyError):
+        db.session.rollback()
+        return "Error updating action", 501
 
-@app.route('/api/admin/get_feedback/')
-def get_all_feedback():
-    feedback_list = db.session.query(Feedback, Action, Admin) \
-        .select_from(Feedback) \
-        .join(Action, isouter=True) \
-        .join(Admin, isouter=True) \
-        .all()
+@app.route('/api/admin/action/<int:action_id>/', methods=['DELETE'])
+def delete_action(action_id):
+    action = Action.query.filter_by(id=action_id).first()
 
-    feedback_entries = [{
-        'feedback_id': feedback.id,
-        'submission_date': feedback.submission_date,
-        'name': feedback.name,
-        'email': feedback.email,
-        'text': feedback.text,
-        'actioned_by': admin.email if admin else None,
-        'action_date': action.action_date if action else None,
-        'action_comment': action.comment if action else None
-    } for feedback, action, admin in feedback_list]
-    
-    return jsonify(feedback_entries)
-
-@app.route('/api/admin/get_action/')
-def get_all_action():
-    action_list = db.session.query(Action, Feedback, Admin) \
-        .select_from(Action) \
-        .join(Feedback, isouter=True) \
-        .join(Admin, isouter=True) \
-        .all()
-
-    actions = [{
-        'action_id': action.id,
-        'admin': admin.email if admin else None,
-        'action_date': action.action_date,
-        'action_comment': action.comment,
-        'feedback_id': feedback.id if feedback else None,
-        'feedback_submission_date': feedback.submission_date if feedback else None,
-        'feedback_name': feedback.name if feedback else None,
-        'feedback_email': feedback.email if feedback else None,
-        'feedback_text': feedback.text if feedback else None
-    } for action, feedback, admin in action_list]
-    
-    return jsonify(actions)
+    if action:
+        db.session.delete(action)
+        try:
+            db.session.commit()
+            return "Successfully deleted action"
+        except (IntegrityError, SQLAlchemyError):
+            db.session.rollback()
+            return "Error deleting action", 501
+    else:
+        return "Action not found", 404
 
 if __name__ == '__main__':
     with app.app_context():

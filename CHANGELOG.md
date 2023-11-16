@@ -1,3 +1,10 @@
+## November 16, 2023
+
+* Add PUT and DELETE to Feedback and Action ([@kystanleylin](https://github.com/kystanleylin))
+* Add GET by id to Feedback and Action ([@kystanleylin](https://github.com/kystanleylin))
+* Change bind_key for sitemgmt.db ([@kystanleylin](https://github.com/kystanleylin))
+* Add api/reset to the databases ([@kystanleylin](https://github.com/kystanleylin))
+
 ## November 15, 2023
 
 * Add Country table, ingested from REST Countries API ([@kystanleylin](https://github.com/kystanleylin))
@@ -9,7 +16,7 @@
 
 * Add malaria/filter and pagination ([@Mzisbrod](https://github.com/Mzisbrod))
 * Add error checking for 400 Bad Request ([@kystanleylin](https://github.com/kystanleylin))
-* Add PUT and DELETE for admin resource ([@kystanleylin](https://github.com/kystanleylin))
+* Add PUT and DELETE to admin resource ([@kystanleylin](https://github.com/kystanleylin))
 * Use arguments in the URL ([@kystanleylin](https://github.com/kystanleylin))
 * Add admin/get_action ([@kystanleylin](https://github.com/kystanleylin))
 
