@@ -1,5 +1,6 @@
 ## November 16, 2023
 
+* Split DbQuery into Malaria and SiteMgmt repos ([@kystanleylin](https://github.com/kystanleylin))
 * Add PUT and DELETE to Feedback and Action ([@kystanleylin](https://github.com/kystanleylin))
 * Add GET by id to Feedback and Action ([@kystanleylin](https://github.com/kystanleylin))
 * Change bind_key for sitemgmt.db ([@kystanleylin](https://github.com/kystanleylin))

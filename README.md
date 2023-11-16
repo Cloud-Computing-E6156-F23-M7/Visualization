@@ -1,8 +1,8 @@
-# MalariaDB
+# Malaria
 
 ## Install Necessary Packages
 
-In MalariaDB folder
+In Malaria folder
 ```
 source venv/bin/activate
 

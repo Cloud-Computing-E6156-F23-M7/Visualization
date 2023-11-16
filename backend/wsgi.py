@@ -1,4 +1,4 @@
-from app import app, db, import_csv
+from app import app, db, import_malaria_csv, import_country_data
 
 if __name__ == "__main__":
     with app.app_context():
