@@ -24,7 +24,7 @@ CORS(app)
 
 class Malaria(db.Model):
     __bind_key__ = 'malaria_db'
-    index = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     region = db.Column(db.String(100))
     year = db.Column(db.Integer)
     cases = db.Column(db.String(100))
@@ -71,34 +71,33 @@ def import_malaria_csv():
         )
     df = pd.read_csv(malaria_csv_path)
     
-    df_schema = {
-        'index': db.Integer,
-        'region': db.String(100),
-        'year': db.Integer,
-        'cases': db.String(100),
-        'deaths': db.String(100),
-        'cases_median': db.Integer,
-        'cases_min': db.Integer,
-        'cases_max': db.Integer,
-        'deaths_median': db.Integer,
-        'deaths_min': db.Integer,
-        'deaths_max': db.Integer,
-        'fips': db.String(2),
-        'iso': db.String(3),    # assume uppercase
-        'iso2': db.String(2),
-        'land_area_kmsq_2012': db.Integer,
-        'languages_en_2012': db.String(100),
-        'who_region': db.String(100),
-        'world_bank_income_group': db.String(100)
-    }
-
-    df.to_sql(
-        Malaria.__tablename__, 
-        db.engines['malaria_db'], 
-        if_exists='replace',
-        index=True,
-        dtype=df_schema
+    for index, row in df.iterrows():
+        malaria = Malaria(
+            region=row.get('region'),
+            year=row.get('year'),
+            cases=row.get('cases'),
+            deaths=row.get('deaths'),
+            cases_median=row.get('cases_median'),
+            cases_min=row.get('cases_min'),
+            cases_max=row.get('cases_max'),
+            deaths_median=row.get('deaths_median'),
+            deaths_min=row.get('deaths_min'),
+            deaths_max=row.get('deaths_max'),
+            fips=row.get('fips'),
+            iso=row.get('iso'),   # assume uppercase
+            iso2=row.get('iso2'),
+            land_area_kmsq_2012=row.get('land_area_kmsq_2012'),
+            languages_en_2012=row.get('languages_en_2012'),
+            who_region=row.get('who_region'),
+            world_bank_income_group=row.get('world_bank_income_group')
         )
+        db.session.add(malaria)
+
+    try:
+        db.session.commit()
+    except (IntegrityError, SQLAlchemyError):
+        db.session.rollback()
+        return "Error importing malaria data to the database"
 
 def import_country_data():
     if Country.query.first():
@@ -106,28 +105,28 @@ def import_country_data():
     
     api_url = 'https://restcountries.com/v3.1/alpha?codes='
     fields = '&fields=name,cca2,cca3,currencies,capital,capitalInfo,latlng,area,population,timezones,flags'
-    iso_codes = Malaria.query.with_entities(Malaria.iso).distinct().all()
-    iso_codes_str = ','.join([iso[0] for iso in iso_codes])
+    iso_list = db.session.query(Malaria.iso).distinct().all()
+    iso_list_str = ','.join([iso[0] for iso in iso_list])
 
     try:
-        response = requests.get(api_url + iso_codes_str + fields)
+        response = requests.get(api_url + iso_list_str + fields)
         
         if response.status_code == 200:
             api_data = response.json()
 
             for country in api_data:
                 new_country = Country(
-                    name=country['name'],
-                    cca2=country['cca2'],
-                    cca3=country['cca3'],   # assume uppercase
-                    currencies=country['currencies'],
-                    capital=country['capital'],
-                    capitalInfo=country['capitalInfo'],
-                    latlng=country['latlng'],
-                    area=country['area'],
-                    population=country['population'],
-                    timezones=country['timezones'],
-                    flags=country['flags']
+                    name=country.get('name'),
+                    cca2=country.get('cca2'),
+                    cca3=country.get('cca3'),   # assume uppercase
+                    currencies=country.get('currencies'),
+                    capital=country.get('capital'),
+                    capitalInfo=country.get('capitalInfo'),
+                    latlng=country.get('latlng'),
+                    area=country.get('area'),
+                    population=country.get('population'),
+                    timezones=country.get('timezones'),
+                    flags=country.get('flags')
                 )
                 db.session.add(new_country)
                 
@@ -167,7 +166,7 @@ def reset_malaria_db():
 
 ### Country and Malaria resources ###
 
-@app.route('/api/country')
+@app.route('/api/country/')
 def get_country():
     iso = request.args.get('iso')
 
@@ -178,9 +177,10 @@ def get_country():
         query = query.filter(Country.cca3.in_(iso_list))
 
     countries = [{
+        'id': country.id,
         'name': country.name,
-        'cca2': country.cca2,
-        'cca3': country.cca3,
+        'iso2': country.cca2,
+        'iso': country.cca3,
         'currencies': country.currencies,
         'capital': country.capital,
         'capitalInfo': country.capitalInfo,
@@ -231,7 +231,9 @@ def filter_malaria():
     # paginates the filtered query
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     malaria_data = [{
+        'id': malaria.id,
         'region': malaria.region,
+        'iso': malaria.iso,
         'year': malaria.year,
         'cases_median': malaria.cases_median,
         'deaths_median': malaria.deaths_median,
@@ -239,13 +241,13 @@ def filter_malaria():
         'languages_en_2012': malaria.languages_en_2012,
         'who_region': malaria.who_region,
         'world_bank_income_group': malaria.world_bank_income_group,
-        'name': country.name,
-        'latlng': country.latlng,
-        'currencies': country.currencies,
-        'capital': country.capital,
-        'capitalInfo': country.capitalInfo,
-        'population': country.population,
-        'flags': country.flags
+        'name': country.name if country else None,
+        'latlng': country.latlng if country else None,
+        'currencies': country.currencies if country else None,
+        'capital': country.capital if country else None,
+        'capitalInfo': country.capitalInfo if country else None,
+        'population': country.population if country else None,
+        'flags': country.flags if country else None
     } for malaria, country in pagination.items]
 
     url += '&' if url[-1] != '?' else ''
@@ -268,7 +270,9 @@ def get_all_malaria():
         .all()
 
     malaria_data = [{
+        'id': malaria.id,
         'region': malaria.region,
+        'iso': malaria.iso,
         'year': malaria.year,
         'cases_median': malaria.cases_median,
         'deaths_median': malaria.deaths_median,
@@ -276,13 +280,13 @@ def get_all_malaria():
         'languages_en_2012': malaria.languages_en_2012,
         'who_region': malaria.who_region,
         'world_bank_income_group': malaria.world_bank_income_group,
-        'name': country.name,
-        'latlng': country.latlng,
-        'currencies': country.currencies,
-        'capital': country.capital,
-        'capitalInfo': country.capitalInfo,
-        'population': country.population,
-        'flags': country.flags
+        'name': country.name if country else None,
+        'latlng': country.latlng if country else None,
+        'currencies': country.currencies if country else None,
+        'capital': country.capital if country else None,
+        'capitalInfo': country.capitalInfo if country else None,
+        'population': country.population if country else None,
+        'flags': country.flags if country else None
     } for malaria, country in malaria_list]
 
     return jsonify(malaria_data)
@@ -294,6 +298,155 @@ def get_all_malaria_iso():
     iso_list = [iso[0] for iso in iso_list]
 
     return jsonify(iso_list)
+
+### Routes for E6156 requirements (NOT to be consumed) ###
+
+@app.route('/api/malaria/<int:id>/', methods=['DELETE'])
+def delete_malaria(id):
+    malaria = Malaria.query.get(id)
+
+    if malaria:
+        db.session.delete(malaria)
+        try:
+            db.session.commit()
+            return "Successfully deleted malaria data"
+        except (IntegrityError, SQLAlchemyError):
+            db.session.rollback()
+            return "Error deleting malaria data", 501
+    else:
+        return "Malaria data not found", 404
+
+@app.route('/api/country/<int:id>/', methods=['DELETE'])
+def delete_country(id):
+    country = Country.query.get(id)
+
+    if country:
+        db.session.delete(country)
+        try:
+            db.session.commit()
+            return "Successfully deleted country data"
+        except (IntegrityError, SQLAlchemyError):
+            db.session.rollback()
+            return "Error deleting country data", 501
+    else:
+        return "Country not found", 404
+
+@app.route('/api/malaria/<int:id>/', methods=['PUT'])
+def update_malaria(id):
+    malaria = Malaria.query.get(id)
+
+    if malaria:
+        new_malaria = request.get_json()
+        malaria.region = new_malaria.get('region', malaria.region)
+        malaria.year = new_malaria.get('year', malaria.year)
+        malaria.cases = new_malaria.get('cases', malaria.cases)
+        malaria.deaths = new_malaria.get('deaths', malaria.deaths)
+        malaria.cases_median = new_malaria.get('cases_median', malaria.cases_median)
+        malaria.cases_min = new_malaria.get('cases_min', malaria.cases_min)
+        malaria.cases_max = new_malaria.get('cases_max', malaria.cases_max)
+        malaria.deaths_median = new_malaria.get('deaths_median', malaria.deaths_median)
+        malaria.deaths_min = new_malaria.get('deaths_min', malaria.deaths_min)
+        malaria.deaths_max = new_malaria.get('deaths_max', malaria.deaths_max)
+        malaria.fips = new_malaria.get('fips', malaria.fips)
+        malaria.iso = new_malaria.get('iso', malaria.iso)
+        malaria.iso2 = new_malaria.get('iso2', malaria.iso2)
+        malaria.land_area_kmsq_2012 = new_malaria.get('land_area_kmsq_2012', malaria.land_area_kmsq_2012)
+        malaria.languages_en_2012 = new_malaria.get('languages_en_2012', malaria.languages_en_2012)
+        malaria.who_region = new_malaria.get('who_region', malaria.who_region)
+        malaria.world_bank_income_group = new_malaria.get('world_bank_income_group', malaria.world_bank_income_group)
+
+        try:
+            db.session.commit()
+            return "Successfully updated malaria data"
+        except (IntegrityError, SQLAlchemyError):
+            db.session.rollback()
+            return "Error updating malaria data", 501
+    else:
+        return "Malaria data not found", 404
+
+@app.route('/api/country/<int:id>/', methods=['PUT'])
+def update_country(id):
+    country = Country.query.get(id)
+
+    if country:
+        new_country = request.get_json()
+        country.name = new_country.get('name', country.name)
+        country.cca2 = new_country.get('iso2', country.cca2)
+        country.cca3 = new_country.get('iso3', country.cca3)
+        country.currencies = new_country.get('currencies', country.currencies)
+        country.capital = new_country.get('capital', country.capital)
+        country.capitalInfo = new_country.get('capitalInfo', country.capitalInfo)
+        country.latlng = new_country.get('latlng', country.latlng)
+        country.area = new_country.get('area', country.area)
+        country.population = new_country.get('population', country.population)
+        country.timezones = new_country.get('timezones', country.timezones)
+        country.flags = new_country.get('flags', country.flags)
+
+        try:
+            db.session.commit()
+            return "Successfully updated country data"
+        except (IntegrityError, SQLAlchemyError):
+            db.session.rollback()
+            return "Error updating country data", 501
+    else:
+        return "Country not found", 404
+
+@app.route('/api/malaria/', methods=['POST'])
+def add_malaria():
+    new_malaria_data = request.get_json()
+
+    new_malaria = Malaria(
+        region=new_malaria_data.get('region'),
+        year=new_malaria_data.get('year'),
+        cases=new_malaria_data.get('cases'),
+        deaths=new_malaria_data.get('deaths'),
+        cases_median=new_malaria_data.get('cases_median'),
+        cases_min=new_malaria_data.get('cases_min'),
+        cases_max=new_malaria_data.get('cases_max'),
+        deaths_min=new_malaria_data.get('deaths_min'),
+        deaths_max=new_malaria_data.get('deaths_max'),
+        fips=new_malaria_data.get('fips'),
+        iso=new_malaria_data.get('iso'),
+        iso2=new_malaria_data.get('iso2'),
+        land_area_kmsq_2012=new_malaria_data.get('land_area_kmsq_2012'),
+        languages_en_2012=new_malaria_data.get('languages_en_2012'),
+        who_region=new_malaria_data.get('who_region'),
+        world_bank_income_group=new_malaria_data.get('world_bank_income_group')
+    )
+
+    db.session.add(new_malaria)
+    try:
+        db.session.commit()
+        return "Successfully added malaria data"
+    except (IntegrityError, SQLAlchemyError):
+        db.session.rollback()
+        return "Error adding malaria data", 501
+
+@app.route('/api/country/', methods=['POST'])
+def add_country():
+    new_country_data = request.get_json()
+
+    new_country = Country(
+        name=new_country_data.get('name'),
+        cca2=new_country_data.get('iso2'),
+        cca3=new_country_data.get('iso'),
+        currencies=new_country_data.get('currencies'),
+        capital=new_country_data.get('capital'),
+        capitalInfo=new_country_data.get('capitalInfo'),
+        latlng=new_country_data.get('latlng'),
+        area=new_country_data.get('area'),
+        population=new_country_data.get('population'),
+        timezones=new_country_data.get('timezones'),
+        flags=new_country_data.get('flags')
+    )
+
+    db.session.add(new_country)
+    try:
+        db.session.commit()
+        return "Successfully added country data"
+    except (IntegrityError, SQLAlchemyError):
+        db.session.rollback()
+        return "Error adding country data", 501
 
 if __name__ == '__main__':
     with app.app_context():
