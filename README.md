@@ -16,8 +16,6 @@ npm install --save axios
 
 pip install -r requirements.txt
 
-<Reset the database> remove instance directory and run python "app.py"
-
 docker build -t sample-backend .
 docker run -p 8080:8080 sample-backend
 ```
