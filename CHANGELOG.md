@@ -4,7 +4,7 @@
 
 * Add POST, PUT, DELETE to Malaria and Country resources ([@kystanleylin](https://github.com/kystanleylin))
 * Fix bug in import_malaria_csv(), so the primary key works properly ([@kystanleylin](https://github.com/kystanleylin))
-* Fix bug to return null if no corresponding country to a malaria entry ([@kystanleylin](https://github.com/kystanleylin))
+* Fix bug to return null if no corresponding Country to a Malaria entry ([@kystanleylin](https://github.com/kystanleylin))
 
 ## November 16, 2023
 
