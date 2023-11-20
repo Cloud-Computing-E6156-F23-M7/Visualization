@@ -1,9 +1,11 @@
-import React, { Component, useState } from 'react';
+import React, { Component } from 'react';
 import axios from 'axios';
-import {APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
+import { APIProvider, Map } from '@vis.gl/react-google-maps';
 import './App.css';
+import { MarkerWithInfowindow } from './marker-with-info';
 
 class App extends Component {
+
   constructor(){
     super()
     this.state = {
@@ -17,15 +19,10 @@ class App extends Component {
 
   fetchCountries = async () => {
     const { data } = await axios.get(
-      `${process.env.REACT_APP_API_URL}/malaria`,
-      {
-        params: {
-          _limit: 10
-         }
-      }
+      `${process.env.REACT_APP_API_URL}/malaria/filter?per_page=10`
     );
-    const { countries } = data;
-    this.setState({countries: data});
+    this.setState({countries: data.malaria_data});
+    console.log(data.malaria_data);
   }
 
   render() {
@@ -34,10 +31,20 @@ class App extends Component {
 
     return (
       <APIProvider apiKey={'AIzaSyCGKVsSrX_rsbwlEgWPcECBhUEErHOTDjM'}>
-        <Map center={position} zoom={5}>
+        <Map 
+          mapId={"739af084373f96fe"}
+          center={position} 
+          zoom={5} 
+        >
 
         {countries?.map(country => (
-          <Marker position={{ lat: country.latlng[0], lng: country.latlng[1] }} />
+          <MarkerWithInfowindow 
+            position={{lat: country.latlng[0], lng: country.latlng[1]}} 
+            region={country.region}
+            population={country.population}
+            median={country.cases_median}
+          >
+          </MarkerWithInfowindow>
         ))}       
         </Map>
         
