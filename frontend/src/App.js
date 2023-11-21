@@ -1,64 +1,54 @@
 import React, { Component } from 'react';
 import axios from 'axios';
+import { APIProvider, Map } from '@vis.gl/react-google-maps';
 import './App.css';
+import { MarkerWithInfowindow } from './marker-with-info';
 
 class App extends Component {
-  state = {
-    topics: ["Loading..."],
-    question: "",
-    answer: ""
-  }
+
+  constructor(){
+    super()
+    this.state = {
+      countries : []
+    }
+  } 
 
   componentDidMount() {
-    this.fetchTopics()
-
+    this.fetchCountries()
   }
 
-  fetchTopics = async () => {
+  fetchCountries = async () => {
     const { data } = await axios.get(
-      `${process.env.REACT_APP_API_URL}/get_topics`,
+      `${process.env.REACT_APP_API_URL}/malaria/filter?per_page=10`
     );
-    const { topics } = data;
-    this.setState({topics})
-  }
-
-  handleChange = (event) => {
-    this.setState({question: event.target.value});
-  }
-
-  handleSubmit = (event) => {
-    this.fetchAnswer();
-    event.preventDefault();
-  }
-
-  fetchAnswer = async () => {
-    const { question } = this.state;
-    const { data } = await axios.post(
-      `${process.env.REACT_APP_API_URL}/submit_question`, { question }
-    );
-    const { answer } = data;
-    this.setState({answer})
+    this.setState({countries: data.malaria_data});
+    console.log(data.malaria_data);
   }
 
   render() {
-    const { topics, question, answer } = this.state;
+    const position = {lat: 53.54992, lng: 10.00678};
+    const { countries } = this.state;
+
     return (
-      <div className="App">
-        <header className="App-header">
-        <h1>List of topics to ask a question on</h1>
-        <ul>
-          {topics.map(topic => (<li key={topic}>{topic}</li>))}
-        </ul>
-          <form onSubmit={this.handleSubmit}>
-          <label>
-            Question:
-            <input type="text" value={question} onChange={this.handleChange} />
-          </label>
-          <input type="submit" value="Submit" />
-        </form>
-        <h1>Answer: {answer}</h1>
-        </header>
-      </div>
+      <APIProvider apiKey={'AIzaSyCGKVsSrX_rsbwlEgWPcECBhUEErHOTDjM'}>
+        <Map 
+          mapId={"739af084373f96fe"}
+          center={position} 
+          zoom={5} 
+        >
+
+        {countries?.map(country => (
+          <MarkerWithInfowindow 
+            position={{lat: country.latlng[0], lng: country.latlng[1]}} 
+            region={country.region}
+            population={country.population}
+            median={country.cases_median}
+          >
+          </MarkerWithInfowindow>
+        ))}       
+        </Map>
+        
+      </APIProvider>
     );
   }
 }
