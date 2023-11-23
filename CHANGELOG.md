@@ -1,4 +1,9 @@
-## November 17, 2023
+## November 21, 2023
+
+### Frontend
+
+* Add map visualization ([@mbu13](https://github.com/mbu13))
+* Add customizable map themes and markers ([@mbu13](https://github.com/mbu13))
 
 ### Backend
 

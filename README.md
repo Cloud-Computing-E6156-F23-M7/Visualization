@@ -1,8 +1,8 @@
-# Malaria
+# Visualization
 
 ## Install Necessary Packages
 
-In Malaria folder
+In Visualization folder
 ```
 source venv/bin/activate
 
@@ -20,7 +20,7 @@ docker build -t sample-backend .
 docker run -p 8080:8080 sample-backend
 ```
 
-## In frontend folder (not implemented)
+## In frontend folder 
 ```
 export NODE_OPTIONS=--openssl-legacy-provider
 export REACT_APP_API_URL=http://localhost:8080/api
