@@ -4,7 +4,7 @@ from flask_cors import CORS
 
 ### Set up the API URLs ###
 
-malaria_base_url = 'http://127.0.0.1:7071/api'  # TODO: change to AWS API Gateway URL after deloyment
+malaria_base_url = 'http://localhost:7071/api'  # TODO: change to AWS API Gateway URL after deloyment
 malaria_endpoints = {
     'reset': '/reset/malaria',      # PUT
     'filter': '/malaria/filter',    # support ?region=&year=&who_region=&iso=&page=&per_page= query parameters
@@ -14,7 +14,7 @@ malaria_endpoints = {
     '<id>': '/malaria/<id>'
 }
 
-country_base_url = 'http://127.0.0.1:7070/api'  # TODO: change to AWS API Gateway URL after deloyment
+country_base_url = 'http://localhost:7070/api'  # TODO: change to AWS API Gateway URL after deloyment
 country_endpoints = {
     'reset': '/reset/country',      # PUT
     'get': '/country',              # support ?iso= query parameter
