@@ -1,3 +1,10 @@
+## November 24, 2023
+
+### Backend
+
+* Modify all methods to take Malaria and Country services as dependencies ([@kystanleylin](https://github.com/kystanleylin))
+* Add async and sync APIs ([@kystanleylin](https://github.com/kystanleylin))
+
 ## November 21, 2023
 
 ### Frontend

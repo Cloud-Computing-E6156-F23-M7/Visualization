@@ -1,4 +1,4 @@
-import json, os, requests
+import json, os, requests, asyncio, aiohttp
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -10,12 +10,16 @@ malaria_endpoints = {
     'filter': '/malaria/filter',    # support ?region=&year=&who_region=&iso=&page=&per_page= query parameters
     'all': '/malaria',
     'iso': '/malaria/iso',
+    'iso/<iso>': '/malaria/iso/<iso>',
+    '<id>': '/malaria/<id>'
 }
 
 country_base_url = 'http://127.0.0.1:7070/api'  # TODO: change to AWS API Gateway URL after deloyment
 country_endpoints = {
     'reset': '/reset/country',      # PUT
     'get': '/country',              # support ?iso= query parameter
+    'iso/<iso>': '/country/iso/<iso>',
+    '<id>': '/country/<id>'
 }
 
 API_URLS = {
@@ -39,6 +43,40 @@ def make_api_request(url, method, **kwargs):
                 })
     except requests.RequestException as e:
         return jsonify({'error': f'Error making API request: {str(e)}'})
+
+async def async_make_api_request(url, method, params=None, session=None):
+    if session is None:
+        async with aiohttp.ClientSession() as session:
+            return await async_make_api_request(url, method, params=params, session=session)
+
+    methods = {
+        'GET': session.get,
+        'POST': session.post,
+        'PUT': session.put,
+        'DELETE': session.delete
+    }
+
+    if method in methods:
+        async with methods[method](url, params=params) as response:
+            return await response.json()
+    else:
+        raise ValueError(f'Invalid method: {method}')
+
+async def fetch_data(urls, method, params=None):    # Assume all URLs use the same method
+    async with aiohttp.ClientSession() as session:
+        tasks = [
+            async_make_api_request(url, method, params=params, session=session) for url in urls
+        ]
+        responses = []
+        for future in asyncio.as_completed(tasks):
+            response = await future
+            responses.append(response)
+        return responses
+
+def run_in_new_loop(coroutine):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coroutine)
 
 ### Set up the app ###
 
@@ -78,7 +116,6 @@ def get_country():
     params = {'iso': request.args.get('iso')}
     return make_api_request(API_URLS['country']['get'], 'GET', params=params)
 
-# TODO: combine country data?
 @app.route('/api/malaria/filter')
 def filter_malaria():
     params = {
@@ -96,20 +133,60 @@ def filter_malaria():
         API_URLS['country']['get'], 'GET', params={'iso': params['iso']}).json
 
     for malaria in malaria_data['malaria_data']:
-        matching_country = next((country for country in country_data if country['iso'] == malaria['iso']), None)
+        matching_country = next((
+            country for country in country_data if country['iso'] == malaria['iso']), None)
         if matching_country:
             malaria.update(matching_country)
 
     return jsonify(malaria_data)   
 
-#TODO: from here down
-@app.route('/api/malaria/')
+# For visual initialization, not meant to be called frequently
+@app.route('/api/malaria/') 
 def get_all_malaria():
-    return make_api_request(API_URLS['malaria']['all'], 'GET')
+    malaria_data = make_api_request(API_URLS['malaria']['all'], 'GET').json
+    country_data = make_api_request(API_URLS['country']['get'], 'GET').json
+
+    for malaria in malaria_data:
+        matching_country = next((
+            country for country in country_data if country['iso'] == malaria['iso']), None)
+        if matching_country:
+            malaria.update(matching_country)
+
+    return jsonify(malaria_data) 
 
 @app.route('/api/malaria/iso/')
 def get_all_malaria_iso():
     return make_api_request(API_URLS['malaria']['iso'], 'GET')
+
+@app.route('/api/malaria_country/iso/<string:iso>')
+def get_malaria_by_iso(iso):
+    malaria_url = API_URLS['malaria']['iso/<iso>'].replace('<iso>', iso)
+    country_url = API_URLS['country']['iso/<iso>'].replace('<iso>', iso)
+
+    coroutine = fetch_data([malaria_url, country_url], 'GET')
+    responses = run_in_new_loop(coroutine)
+
+    return jsonify(responses)
+
+@app.route('/api/malaria_country/async/<int:id>')
+def get_malaria_async_by_id(id):
+    malaria_url = API_URLS['malaria']['<id>'].replace('<id>', str(id))
+    country_url = API_URLS['country']['<id>'].replace('<id>', str(id))
+
+    coroutine = fetch_data([malaria_url, country_url], 'GET')
+    responses = run_in_new_loop(coroutine)
+
+    return jsonify(responses)
+
+@app.route('/api/malaria_country/sync/<int:id>')
+def get_malaria_sync_by_id(id):
+    malaria_url = API_URLS['malaria']['<id>'].replace('<id>', str(id))
+    country_url = API_URLS['country']['<id>'].replace('<id>', str(id))
+
+    malaria_response = make_api_request(malaria_url, 'GET').json
+    country_response = make_api_request(country_url, 'GET').json
+
+    return jsonify([malaria_response, country_response])
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)
