@@ -158,6 +158,8 @@ def get_all_malaria():
 def get_all_malaria_iso():
     return make_api_request(API_URLS['malaria']['iso'], 'GET')
 
+### Async methods E6156 requirements only. NOT meant to be consumed ###
+
 @app.route('/api/malaria_country/iso/<string:iso>')
 def get_malaria_by_iso(iso):
     malaria_url = API_URLS['malaria']['iso/<iso>'].replace('<iso>', iso)
