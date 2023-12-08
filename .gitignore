@@ -44,4 +44,4 @@ instance/
 ehthumbs.db
 Thumbs.db
 
-node_module
+node_module*

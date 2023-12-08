@@ -30,25 +30,34 @@ class App extends Component {
     const { countries } = this.state;
 
     return (
-      <APIProvider apiKey={'AIzaSyCGKVsSrX_rsbwlEgWPcECBhUEErHOTDjM'}>
-        <Map 
-          mapId={"739af084373f96fe"}
-          center={position} 
-          zoom={5} 
-        >
-
-        {countries?.map(country => (
-          <MarkerWithInfowindow 
-            position={{lat: country.latlng[0], lng: country.latlng[1]}} 
-            region={country.region}
-            population={country.population}
-            median={country.cases_median}
-          >
-          </MarkerWithInfowindow>
-        ))}       
-        </Map>
         
-      </APIProvider>
+        <APIProvider apiKey={'AIzaSyCGKVsSrX_rsbwlEgWPcECBhUEErHOTDjM'}>
+          <nav class="navbar p-3 rounded shadow-lg fixed-top bg-body-tertiary">
+            <div class="container-fluid">
+              <a class="navbar-brand" href="#">Malaria Visualizer</a>
+            </div>
+          </nav>
+
+          <Map 
+            mapId={"739af084373f96fe"}
+            center={position} 
+            zoom={5}
+            mapTypeControl={false}
+            fullscreenControl={false}
+          >
+
+          {countries?.map(country => (
+            <MarkerWithInfowindow 
+              position={{lat: country.latlng[0], lng: country.latlng[1]}} 
+              region={country.region}
+              population={country.population}
+              median={country.cases_median}
+            >
+            </MarkerWithInfowindow>
+          ))}       
+          </Map>
+          
+        </APIProvider>
     );
   }
 }
