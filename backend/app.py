@@ -89,7 +89,7 @@ CORS(app)
 def home():
     return "Ok"
 
-### Reset databases ###
+### Reset databases - Not to be consumed by frontend ###
 
 @app.route('/api/reset/malaria/', methods=['PUT'])
 def reset_malaria_db():
