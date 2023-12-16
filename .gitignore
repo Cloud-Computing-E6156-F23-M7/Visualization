@@ -45,3 +45,8 @@ ehthumbs.db
 Thumbs.db
 
 node_module*
+
+# python #
+######################
+__pycache__/
+*.py[cod]
