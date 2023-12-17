@@ -19,14 +19,14 @@ class App extends Component {
 
   fetchCountries = async () => {
     const { data } = await axios.get(
-      `${process.env.REACT_APP_API_URL}/malaria/filter?per_page=10`
+      `${process.env.REACT_APP_API_URL}/malaria/filter?per_page=200`
     );
     this.setState({countries: data.malaria_data});
     console.log(data.malaria_data);
   }
 
   render() {
-    const position = {lat: 53.54992, lng: 10.00678};
+    const position = {lat: 10.54992, lng: 10.00678};
     const { countries } = this.state;
 
     return (
@@ -34,14 +34,29 @@ class App extends Component {
         <APIProvider apiKey={'AIzaSyCGKVsSrX_rsbwlEgWPcECBhUEErHOTDjM'}>
           <nav class="navbar p-3 rounded shadow-lg fixed-top bg-body-tertiary">
             <div class="container-fluid">
-              <a class="navbar-brand" href="#">Malaria Visualizer</a>
+              <a class="navbar-brand mb-0 h1" href="#">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/a/a6/Columbia_University_Shield.svg" width="30" height="24"></img>
+                  Columbia Malaria Visualizer
+              </a>
+
+              <ul class="nav nav-pills justify-content-end">
+                <li class="nav-item">
+                  <a class="nav-link active" aria-current="page" href="#">Map</a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" href="#">Feedback</a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" href="#">Login</a>
+                </li>
+              </ul>
             </div>
           </nav>
 
           <Map 
             mapId={"739af084373f96fe"}
             center={position} 
-            zoom={5}
+            zoom={3}
             mapTypeControl={false}
             fullscreenControl={false}
           >
