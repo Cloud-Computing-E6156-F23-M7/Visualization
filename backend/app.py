@@ -4,7 +4,7 @@ from flask_cors import CORS
 
 ### Set up the API URLs ###
 
-malaria_base_url = 'http://3.88.58.166:7071/api'  # TODO: change to AWS API Gateway URL after deloyment
+malaria_base_url = 'http://3.91.201.73:7071/api'  # TODO: change to AWS API Gateway URL after deloyment
 malaria_endpoints = {
     'reset': '/reset/malaria',      # PUT
     'filter': '/malaria/filter',    # support ?region=&year=&who_region=&iso=&page=&per_page= query parameters
